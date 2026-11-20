@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BORA DPI — Proveedores de infraestructura pública digital</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+<script src="https://unpkg.com/layout-base@2.0.1/layout-base.js"></script>
+<script src="https://unpkg.com/cose-base@2.2.0/cose-base.js"></script>
+<script src="https://unpkg.com/cytoscape-fcose@2.2.0/cytoscape-fcose.js"></script>
+<style>
+  :root {
+    --fog: #EEF1F4; --paper: #FFFFFF; --ink: #1B2A3A; --ink-2: #4A5868; --rule: #D5DCE3;
+    --org: #3D4FA8; --tech: #C98A00; --co: #2E7D6F; --per: #6B7785; --stamp: #B83A26; --ok: #2E7D6F;
+    --sans: "Public Sans", system-ui, sans-serif; --serif: "Source Serif 4", Georgia, serif;
+    --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
+    --header: 64px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { font: 15px/1.5 var(--sans); color: var(--ink); background: var(--fog); -webkit-font-smoothing: antialiased; }
+  a { color: var(--org); text-underline-offset: 2px; }
+  :focus-visible { outline: 3px solid var(--org); outline-offset: 2px; border-radius: 3px; }
+  button { font: inherit; color: inherit; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+  /* Encabezado */
+  header { height: var(--header); display: flex; align-items: center; gap: var(--s5); padding: 0 var(--s5);
+           background: var(--ink); color: #fff; position: sticky; top: 0; z-index: 10; }
+  .brand { display: flex; flex-direction: column; line-height: 1.15; min-width: max-content; }
+  .brand b { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
+  .brand span { font-size: 12px; color: #B7C2CE; }
+  nav { display: flex; gap: var(--s1); overflow-x: auto; scrollbar-width: none; }
+  nav button { background: none; border: 0; color: #C9D3DD; padding: var(--s2) var(--s3); border-radius: 6px; cursor: pointer;
+               white-space: nowrap; font-weight: 500; }
+  nav button:hover { color: #fff; }
+  nav button[aria-current="page"] { color: #fff; box-shadow: inset 0 -2px 0 #fff; border-radius: 0; }
+  nav .count { display: inline-block; min-width: 20px; padding: 0 6px; margin-left: 4px; border-radius: 10px;
+               background: var(--stamp); color: #fff; font-size: 12px; line-height: 18px; text-align: center; }
+  #stats { margin-left: auto; display: flex; gap: var(--s4); font-size: 12px; color: #B7C2CE; }
+  #stats div { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; }
+  #stats strong { color: #fff; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  main { min-height: calc(100vh - var(--header)); }
+  .view[hidden] { display: none !important; }
+  @keyframes enter { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  @keyframes leave { to { opacity: 0; transform: translateX(24px); } }
+  .view.enter .page, #mapView.enter { animation: enter .32s cubic-bezier(.2,.7,.2,1) both; }
+  #detail > * { animation: enter .28s cubic-bezier(.2,.7,.2,1) both; }
+  .chain, .case { animation: enter .4s cubic-bezier(.2,.7,.2,1) both; }
+  .case.leaving { animation: leave .28s ease-in forwards; }
+  nav button { transition: color .2s, box-shadow .25s; }
+
+  /* Mapa */
+  #mapView { display: grid; grid-template-columns: minmax(0, 1fr) 420px; height: calc(100vh - var(--header)); }
+  #cyWrap { position: relative; background: var(--paper); border-right: 1px solid var(--rule); }
+  #cy { position: absolute; inset: 0; }
+  .legend { position: absolute; left: var(--s4); bottom: var(--s4); display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4);
+            background: rgba(255,255,255,.92); padding: var(--s2) var(--s3); border: 1px solid var(--rule); border-radius: 6px;
+            font-size: 12px; color: var(--ink-2); max-width: calc(100% - 2 * var(--s4)); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .sw.org { background: var(--org); border-radius: 2px; } .sw.tech { background: var(--tech); } .sw.co { background: var(--co); }
+  .sw.per { background: var(--per); width: 7px; height: 7px; } .sw.pend { background: none; border-top: 2px dashed var(--stamp); border-radius: 0; width: 16px; height: 0; }
+
+  aside { overflow: auto; background: var(--fog); padding: var(--s4) var(--s5) var(--s6); }
+  .search { position: relative; }
+  .search input { width: 100%; padding: 10px var(--s3); border: 1px solid var(--rule); border-radius: 8px; background: var(--paper);
+                  font: inherit; color: var(--ink); }
+  .results { margin-top: var(--s1); }
+  .results button { display: flex; width: 100%; align-items: baseline; gap: var(--s2); text-align: left; padding: var(--s2) var(--s3);
+                    background: var(--paper); border: 0; border-bottom: 1px solid var(--fog); cursor: pointer; }
+  .results button:hover { background: #F6F8FA; }
+  .results small { color: var(--ink-2); margin-left: auto; font-variant-numeric: tabular-nums; }
+  .kind { font-size: 12px; color: var(--ink-2); }
+  .linkbtn { background: none; border: 0; padding: 0; color: var(--org); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+  .toolbar { display: flex; gap: var(--s3); margin: var(--s3) 0 var(--s4); font-size: 14px; }
+
+  .entity h2 { font-size: 22px; line-height: 1.25; margin: var(--s4) 0 var(--s2); letter-spacing: -0.01em; }
+  .facts { display: grid; grid-template-columns: max-content 1fr; gap: 2px var(--s3); margin: 0 0 var(--s3); font-size: 14px; }
+  .facts dt { color: var(--ink-2); } .facts dd { margin: 0; font-variant-numeric: tabular-nums; }
+  .badge { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 10px; margin-right: 4px; }
+  .badge.tech { background: #FBEFCF; color: #7A5300; } .badge.pend { background: #F8E1DC; color: var(--stamp); }
+  .badge.dni { background: #DDEFEA; color: #1F5C51; } .badge.reg { background: #E3E7F6; color: var(--org); }
+  .badge.same { background: #FFF; color: #7A5300; border: 1px dashed #C98A00; cursor: help; }
+  .badge.plain { background: #E4E9EE; color: var(--ink-2); }
+  .section-title { font-size: 15px; font-weight: 600; margin: var(--s5) 0 var(--s2); }
+  .objeto { font-family: var(--serif); font-size: 15px; line-height: 1.6; color: var(--ink-2); }
+  .empty { color: var(--ink-2); margin-top: var(--s5); max-width: 34ch; }
+
+  /* La cita: el recorte del aviso es la prueba de cada vínculo */
+  .link { padding: var(--s3) 0; border-top: 1px solid var(--rule); }
+  .link-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px var(--s2); }
+  .link-head .who { font-weight: 600; }
+  .link-head .role { color: var(--ink-2); }
+  .cite { margin: var(--s2) 0 0; padding: var(--s2) 0 var(--s2) var(--s3); border-left: 3px solid var(--rule); }
+  .cite blockquote { margin: 0; font-family: var(--serif); font-size: 15px; line-height: 1.55; color: var(--ink); }
+  .cite figcaption { margin-top: var(--s1); font-size: 12px; color: var(--ink-2); }
+  .cite figcaption a { color: var(--ink-2); }
+  .cite.award { border-left-color: var(--tech); } .cite.pending { border-left-color: var(--stamp); }
+
+  /* Vistas de lectura */
+  .page { max-width: 1120px; margin: 0 auto; padding: var(--s6) var(--s5) 64px; }
+  .page h1 { font-size: 28px; line-height: 1.2; letter-spacing: -0.015em; margin: 0 0 var(--s2); }
+  .lede { color: var(--ink-2); max-width: 70ch; margin: 0 0 var(--s5); }
+
+  /* Cadena X → Y → Z: es una secuencia real, por eso lleva orden y conectores */
+  .chain { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; background: var(--paper); border: 1px solid var(--rule);
+           border-radius: 10px; margin-bottom: var(--s5); }
+  .hop { padding: var(--s4) var(--s5); position: relative; min-width: 0; }
+  .hop + .hop { border-left: 1px solid var(--rule); }
+  .hop + .hop::before { content: ""; position: absolute; left: -7px; top: 26px; width: 12px; height: 12px; background: var(--paper);
+                        border-top: 1px solid var(--rule); border-right: 1px solid var(--rule); transform: rotate(45deg); }
+  .hop .step { font-size: 12px; color: var(--ink-2); }
+  .hop h3 { font-size: 17px; margin: 2px 0 var(--s1); line-height: 1.3; }
+  .hop h3 button { font-weight: 700; text-align: left; color: var(--ink); text-decoration: none; }
+  .hop h3 button:hover { text-decoration: underline; }
+  .hop .cuit { font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; margin-bottom: var(--s2); }
+  .hop .via { margin-top: var(--s3); font-size: 14px; }
+  .award-line { font-size: 14px; margin: var(--s2) 0; }
+
+  /* Revisión */
+  .tabs { display: flex; gap: var(--s4); border-bottom: 1px solid var(--rule); margin-bottom: var(--s5); }
+  .tabs button { background: none; border: 0; padding: var(--s2) 0; cursor: pointer; color: var(--ink-2); font-weight: 500; }
+  .tabs button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 -2px 0 var(--ink); }
+  .case { background: var(--paper); border: 1px solid var(--rule); border-radius: 10px; padding: var(--s4) var(--s5); margin-bottom: var(--s4); }
+  .case h2 { font-size: 17px; line-height: 1.35; margin: var(--s1) 0 var(--s3); }
+  .case .meta { font-size: 13px; color: var(--ink-2); }
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s5); }
+  .compare h3 { font-size: 13px; font-weight: 600; color: var(--ink-2); margin: 0; }
+  .actions { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s4); align-items: center; }
+  .btn { border: 1px solid var(--rule); background: var(--paper); border-radius: 8px; padding: 9px var(--s4); cursor: pointer; font-weight: 600; min-height: 42px; }
+  .btn.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .btn.danger { color: var(--stamp); border-color: #E6B9AF; }
+  .btn:hover { filter: brightness(0.96); }
+  .field { padding: 9px var(--s3); border: 1px solid var(--rule); border-radius: 8px; font: inherit; min-height: 42px; width: 220px; max-width: 100%; }
+  .note { font-size: 14px; color: var(--ink-2); margin-top: var(--s2); }
+  .auto-summary { display: flex; flex-wrap: wrap; gap: var(--s5); margin: 0 0 var(--s5); }
+  .auto-summary div { font-size: 13px; color: var(--ink-2); }
+  .auto-summary strong { display: block; font-size: 24px; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+  /* Archivo */
+  .archive-search { display: flex; gap: var(--s2); margin-bottom: var(--s5); }
+  .archive-search input { flex: 1; padding: 10px var(--s3); border: 1px solid var(--rule); border-radius: 8px; font: inherit; }
+  .notice { background: var(--paper); border: 1px solid var(--rule); border-radius: 10px; padding: var(--s3) var(--s5); margin-bottom: var(--s3); }
+  .notice h3 { font-size: 16px; margin: 0; }
+
+  /* Móvil y tablet */
+  @media (max-width: 900px) {
+    :root { --header: 56px; }
+    header { gap: var(--s3); padding: 0 var(--s3); }
+    .brand span, #stats { display: none; }
+    nav { gap: 0; }
+    nav button { padding: var(--s2) 10px; font-size: 15px; white-space: nowrap; }
+    #mapView { display: flex; flex-direction: column; height: auto; }
+    #cyWrap { height: 56vh; border-right: 0; border-bottom: 1px solid var(--rule); }
+    aside { padding: var(--s4); }
+    .page { padding: var(--s5) var(--s4) 48px; }
+    .page h1 { font-size: 23px; }
+    .chain { grid-template-columns: 1fr; }
+    .hop + .hop { border-left: 0; border-top: 1px solid var(--rule); }
+    .hop + .hop::before { left: 26px; top: -7px; transform: rotate(-45deg); }
+    .compare { grid-template-columns: 1fr; gap: var(--s3); }
+    .case { padding: var(--s4); }
+    .actions .btn { flex: 1 1 auto; }
+    .legend { left: var(--s2); bottom: var(--s2); font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><b>BORA DPI</b><span>Proveedores de infraestructura pública digital</span></div>
+  <nav aria-label="Secciones">
+    <button data-v="mapView" aria-current="page">Mapa</button>
+    <button data-v="chainsView">Prueba X→Y→Z</button>
+    <button data-v="reviewView">Revisión<span class="count" id="nrev" hidden></span></button>
+    <button data-v="archiveView">Archivo</button>
+  </nav>
+  <div id="stats"></div>
+</header>
+<main>
+  <section id="mapView" class="view">
+    <div id="cyWrap">
+      <div id="cy" role="img" aria-label="Grafo de organismos, sociedades y personas"></div>
+      <div class="legend">
+        <span><i class="sw org"></i>Organismo</span>
+        <span><i class="sw tech"></i>Con adjudicación tecnológica</span>
+        <span><i class="sw co"></i>Sociedad</span>
+        <span><i class="sw per"></i>Persona</span>
+        <span><i class="sw pend"></i>Vínculo por revisar</span>
+      </div>
+    </div>
+    <aside>
+      <div class="search">
+        <label for="q" class="kind">Buscar organismo, sociedad, CUIT o persona</label>
+        <input type="search" id="q" autocomplete="off" placeholder="Ej.: Danaide o 30-70168121-1">
+        <div class="results" id="results"></div>
+      </div>
+      <div class="toolbar"><button class="linkbtn" id="overview">Ver el mapa completo</button></div>
+      <div id="detail"><p class="empty">Elegí un nodo del mapa o buscá una sociedad para ver sus vínculos y los avisos que los respaldan.</p></div>
+    </aside>
+  </section>
+  <section id="chainsView" class="view" hidden><div class="page" id="chains"></div></section>
+  <section id="reviewView" class="view" hidden><div class="page" id="review"></div></section>
+  <section id="archiveView" class="view" hidden>
+    <div class="page">
+      <h1>Archivo de avisos</h1>
+      <p class="lede">Texto completo de los avisos descargados del Boletín Oficial, con su enlace original.</p>
+      <form class="archive-search" id="nform">
+        <input type="search" id="nq" placeholder="Palabras, nombre o CUIT" aria-label="Buscar en el archivo">
+        <button class="btn primary">Buscar</button>
+      </form>
+      <div id="nres"></div>
+    </div>
+  </section>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const json = p => fetch(p).then(r => r.json());
+// Sitio estático (bora-dpi export): mismas rutas, servidas como archivos JSON; búsquedas en el navegador
+const cache = {};
+const once = p => cache[p] ??= json(p);
+const fold = s => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+async function staticApi(p) {
+  const [path, qs] = p.split('?'), q = new URLSearchParams(qs || '');
+  if (path === '/api/graph') return q.get('node') ? json(`/api/graph/${q.get('node')}.json`) : once('/api/graph.json');
+  if (path.startsWith('/api/node/')) return json(path + '.json');
+  if (path === '/api/reviews') return once(`/api/reviews-${q.get('status') || 'pending'}.json`);
+  if (path === '/api/search') {
+    const t = fold(q.get('q')), d = t.replace(/\D/g, '');
+    return (await once('/api/search.json')).filter(n => fold(n.label).includes(t) || fold(n.alias).includes(t)
+      || (d.length > 3 && (n.cuit || '').replace(/\D/g, '').includes(d))).slice(0, 40);
+  }
+  if (path === '/api/notices') {
+    const words = fold(q.get('q')).split(/\s+/).filter(Boolean);
+    return (await once('/api/notices.json')).filter(n => { const t = fold(n.title + ' ' + n.text); return words.every(w => t.includes(w)); })
+      .slice(0, 50).map(n => { const i = Math.max(0, fold(n.text).indexOf(words[0] || '') - 120); return { ...n, snippet: '… ' + n.text.slice(i, i + 320) + ' …' }; });
+  }
+  return once(path + '.json');
+}
+const api = (p, o) => window.STATIC_SITE ? staticApi(p) : json(p, o);
+const KIND = { company: 'Sociedad', person: 'Persona', organism: 'Organismo' };
+const fmtDate = d => d ? d.slice(0, 10).split('-').reverse().join('/') : '';
+
+// Pie de la cita al estilo del boletín: sección y fecha de publicación, con el enlace oficial
+function cite(e, cls = '') {
+  if (!e || !e.evidence) return e && e.url ? `<p class="note"><a href="${e.url}" target="_blank" rel="noopener">Ver aviso original</a></p>` : '';
+  const [sec, id, ymd] = (e.notice_id || '').split('/');
+  const secName = { primera: '1.ª sección', segunda: '2.ª sección', tercera: '3.ª sección' }[sec] || '';
+  const date = ymd ? `${ymd.slice(6)}/${ymd.slice(4, 6)}/${ymd.slice(0, 4)}` : '';
+  return `<figure class="cite ${cls}"><blockquote>“${esc(e.evidence)}”</blockquote>
+    <figcaption><a href="${e.url}" target="_blank" rel="noopener">Boletín Oficial, ${secName}, ${date}</a>, aviso ${esc(id)}</figcaption></figure>`;
+}
+const idBadge = by => ({ 'DNI': '<span class="badge dni">DNI en el aviso</span>', 'padrón ARCA': '<span class="badge reg">DNI por padrón ARCA</span>',
+  'revisión': '<span class="badge dni">confirmado en revisión</span>',
+  'red societaria': '<span class="badge same" title="Este aviso no trae DNI: se unió porque el nombre completo es idéntico y comparten un socio en otra sociedad (o el nombre tiene cuatro o más palabras)">mismo nombre, socio en común</span>',
+  'misma sociedad': '<span class="badge same" title="Este aviso no trae DNI: se unió porque el nombre completo es idéntico al de una persona identificada por DNI en la misma sociedad">mismo nombre, misma sociedad</span>', 'nombre': '<span class="badge plain">solo nombre</span>' }[by] || '');
+
+// --- Mapa ---------------------------------------------------------------
+if (window.cytoscapeFcose) cytoscape.use(cytoscapeFcose);
+const cy = cytoscape({
+  container: $('#cy'), minZoom: 0.15, maxZoom: 3, textureOnViewport: true, motionBlur: false, wheelSensitivity: 0.4,
+  style: [
+    { selector: 'node', style: { label: 'data(label)', 'font-family': 'Public Sans', 'font-size': 9, color: '#1B2A3A', 'text-wrap': 'wrap',
+        'text-max-width': 120, 'text-valign': 'bottom', 'text-margin-y': 4, 'text-background-color': '#fff', 'text-background-opacity': 0.75, 'text-background-padding': 1, 'min-zoomed-font-size': 7 } },
+    { selector: 'node[type="organism"]', style: { shape: 'round-rectangle', 'background-color': '#3D4FA8', width: 24, height: 16 } },
+    { selector: 'node[type="company"]', style: { 'background-color': '#2E7D6F', width: 16, height: 16 } },
+    { selector: 'node[?has_tech_award]', style: { 'background-color': '#C98A00', width: 24, height: 24, 'font-weight': 600 } },
+    { selector: 'node[type="person"]', style: { 'background-color': '#6B7785', width: 9, height: 9, 'font-size': 8, color: '#4A5868', 'min-zoomed-font-size': 11 } },
+    { selector: 'node[homonyms > 0]', style: { 'border-width': 2, 'border-style': 'dashed', 'border-color': '#B83A26', width: 12, height: 12 } },
+    { selector: 'node:selected', style: { 'border-width': 3, 'border-color': '#1B2A3A', 'min-zoomed-font-size': 0 } },
+    { selector: 'node.nb', style: { 'min-zoomed-font-size': 0 } },
+    { selector: 'edge', style: { width: 1, 'line-color': '#B4BFCA', 'curve-style': 'bezier' } },
+    { selector: 'edge[type="award"]', style: { width: 2, 'line-color': '#8E99D6', 'target-arrow-shape': 'triangle', 'target-arrow-color': '#8E99D6' } },
+    { selector: 'edge[status="pending_review"]', style: { 'line-style': 'dashed', 'line-color': '#B83A26', width: 1.4 } },
+  ],
+});
+cy.on('tap', 'node', ev => nav(`#map/${center || 'all'}/${ev.target.id()}`));
+cy.on('select', 'node', ev => { cy.nodes().removeClass('nb'); ev.target.closedNeighborhood().nodes().addClass('nb'); });
+cy.on('dbltap', 'node', ev => nav('#map/' + ev.target.id()));
+
+const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let center;  // nodo central cargado ('all' = mapa general)
+async function load(node) {
+  center = node || 'all';
+  const g = await api('/api/graph' + (node ? `?node=${node}&hops=3` : ''));
+  const from = node && cy.$id(node).nonempty() ? { ...cy.$id(node).position() } : null;
+  cy.elements().remove();
+  const seen = new Set(), edges = g.edges.filter(e => { const k = [e.source, e.target].sort() + e.type + e.status; return !seen.has(k) && seen.add(k); });
+  cy.add([...g.nodes.map(n => ({ data: n, position: from ? { ...from } : undefined })), ...edges.map(e => ({ data: e }))]);
+  const l = cy.layout({ name: 'fcose', quality: 'default', randomize: true, animate: !calm, animationDuration: 500, animationEasing: 'ease-out-cubic',
+    nodeRepulsion: 9000, idealEdgeLength: 80, nodeSeparation: 60, padding: 40 });
+  const done = l.promiseOn('layoutstop'); l.run(); await done;
+}
+
+const intro = $('#detail').innerHTML;
+function select(id) {
+  cy.$(':selected').unselect(); cy.nodes().removeClass('nb');
+  if (!id || id === 'all') { $('#detail').innerHTML = intro; return; }
+  const n = cy.$id(id);
+  if (n.nonempty()) {
+    n.select();
+    cy.animate({ fit: { eles: n.closedNeighborhood(), padding: 70 } }, { duration: calm ? 0 : 450, easing: 'ease-in-out-cubic' });
+  }
+  showNode(id);
+}
+
+async function showNode(id) {
+  const d = await api('/api/node/' + id);
+  const aw = d.edges.filter(e => e.type === 'award'), ro = d.edges.filter(e => e.type === 'role'), ps = d.edges.filter(e => e.type === 'possible_same');
+  let h = `<div class="entity"><div class="kind">${KIND[d.type]}</div><h2>${esc(d.name)}</h2><div>`;
+  if (aw.length && d.type === 'company') h += '<span class="badge tech">adjudicataria de tecnología</span>';
+  if (d.objeto_tech) h += '<span class="badge tech">objeto social tecnológico</span>';
+  if (d.type === 'person') h += d.identified_by_dni ? '<span class="badge dni">identificada por DNI</span>' : '<span class="badge plain">sin DNI</span>';
+  h += '</div><dl class="facts">';
+  if (d.cuit) h += `<dt>CUIT</dt><dd>${esc(d.cuit)}</dd>`;
+  if (d.cuit_source) h += `<dt>Fuente del CUIT</dt><dd>${d.cuit_source.includes('/') ? `<a href="https://www.boletinoficial.gob.ar/detalleAviso/${esc(d.cuit_source)}" target="_blank" rel="noopener">aviso ${esc(d.cuit_source.split('/')[1])}</a>` : esc(d.cuit_source)}</dd>`;
+  if (d.names && d.names.length > 1) h += `<dt>También figura como</dt><dd>${d.names.filter(n => n !== d.name).map(esc).join('; ')}</dd>`;
+  h += '</dl>';
+  if (d.objeto) h += `<div class="section-title">Objeto social</div><p class="objeto">${esc(d.objeto.length > 420 ? d.objeto.slice(0, 420) + '…' : d.objeto)}</p>`;
+  if (aw.length) h += `<div class="section-title">${d.type === 'organism' ? 'Adjudicó' : 'Adjudicaciones de tecnología'} (${aw.length})</div>` + aw.map(e => {
+    const other = d.type === 'organism' ? e.target : e.source;
+    return `<div class="link"><div class="link-head"><span class="who">${esc(e.object)}</span>${e.status === 'pending_review' ? '<span class="badge pend">por revisar</span>' : ''}</div>
+      <div class="note">${d.type === 'organism' ? `<button class="linkbtn" data-node="${other}">${esc(cy.$id(other).data('label') || 'Ver adjudicataria')}</button>, ` : ''}${fmtDate(e.date)}${e.amount ? `, ${esc(e.amount)}` : ''}</div>${cite(e, 'award')}</div>`;
+  }).join('');
+  if (ro.length) h += `<div class="section-title">${d.type === 'person' ? 'Sociedades' : 'Socios y autoridades'} (${ro.length})</div>` + ro.map(e => {
+    const other = d.type === 'person' ? e.target : e.source;
+    return `<div class="link"><div class="link-head"><button class="linkbtn who" data-node="${other}">${esc(cy.$id(other).data('label') || 'Ver')}</button>
+      <span class="role">${esc(e.label)}, ${fmtDate(e.date)}</span>${e.status === 'pending_review' ? '<span class="badge pend">por revisar</span>' : idBadge(e.identified_by)}</div>${cite(e, e.status === 'pending_review' ? 'pending' : '')}</div>`;
+  }).join('');
+  if (ps.length) h += `<div class="section-title">Posibles homónimos</div><p class="note">Hay ${ps.length} mención${ps.length > 1 ? 'es' : ''} con el mismo nombre y sin DNI suficiente. <button class="linkbtn" data-go="#review">Revisarlas</button></p>`;
+  $('#detail').innerHTML = h + '</div>';
+}
+$('#detail').addEventListener('click', e => {
+  const n = e.target.closest('[data-node]'); if (n) { nav('#map/' + n.dataset.node); return; }
+  const g = e.target.closest('[data-go]'); if (g) nav(g.dataset.go);
+});
+
+let timer;
+$('#q').addEventListener('input', e => {
+  clearTimeout(timer);
+  const q = e.target.value.trim();
+  if (q.length < 2) { $('#results').innerHTML = ''; return; }
+  timer = setTimeout(async () => {
+    const r = await api('/api/search?q=' + encodeURIComponent(q));
+    $('#results').innerHTML = r.slice(0, 12).map(x => `<button data-id="${x.id}"><span class="kind">${KIND[x.type]}</span><span>${esc(x.label)}</span>${x.cuit ? `<small>${x.cuit}</small>` : ''}</button>`).join('')
+      || '<p class="note">Sin resultados. Probá con parte del nombre o el CUIT sin guiones.</p>';
+  }, 200);
+});
+$('#results').addEventListener('click', e => { const d = e.target.closest('[data-id]'); if (d) { $('#results').innerHTML = ''; nav('#map/' + d.dataset.id); } });
+$('#overview').onclick = () => nav('#map');
+
+// --- Navegación ---------------------------------------------------------
+// Rutas: #map, #map/<centro>, #map/<centro>/<elegido>, #chains, #review, #review/auto, #archive
+const VIEWS = { map: 'mapView', chains: 'chainsView', review: 'reviewView', revision: 'reviewView', archive: 'archiveView' };
+const nav = h => { if (location.hash !== h) location.hash = h; else route(); };  // cada paso queda en el historial
+let shown, lastMap = '#map';
+function show(v) {
+  document.querySelectorAll('nav button').forEach(b => b.dataset.v === v ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'));
+  if (shown === v) return;
+  shown = v;
+  document.querySelectorAll('.view').forEach(x => { x.hidden = x.id !== v; x.classList.remove('enter'); });
+  const el = $('#' + v); void el.offsetWidth; el.classList.add('enter');
+  scrollTo(0, 0);
+  if (v === 'mapView') cy.resize();
+}
+async function route() {
+  const [v, a, b] = location.hash.slice(1).split('/');
+  const view = VIEWS[v] || 'mapView';
+  show(view);
+  if (view === 'mapView') {
+    lastMap = location.hash || '#map';
+    if (center !== (a || 'all')) await load(a && a !== 'all' ? a : null);
+    select(b || a);
+  }
+  if (view === 'chainsView') chains();
+  if (view === 'reviewView') reviews(a === 'auto' ? 'auto' : 'pending');
+}
+addEventListener('hashchange', route);
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => nav(b.dataset.v === 'mapView' ? lastMap : '#' + b.dataset.v.replace('View', '')));
+let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { cy.resize(); cy.fit(undefined, 30); }, 150); });
+
+// --- Prueba X → Y → Z ----------------------------------------------------
+const via = (p, s) => `<div class="via"><span class="kind">a través de</span> <b>${esc(p.name)}</b>, ${esc(s.role)}${cite(s)}</div>`;
+const hop = (step, c, inner) => `<div class="hop"><div class="step">${step}</div><h3><button class="linkbtn" data-node="${c.id}">${esc(c.label)}</button></h3>
+  <div class="cuit">${c.cuit ? 'CUIT ' + esc(c.cuit) : 'CUIT no publicado en los avisos'}</div>${inner}</div>`;
+async function chains() {
+  const cs = await api('/api/chains');
+  $('#chains').innerHTML = `<h1>Prueba de punta a punta</h1>
+    <p class="lede">Desde una adjudicación de tecnología a la sociedad X se sigue a una persona, cotejada por DNI, hasta la sociedad Y, y desde Y a otra persona hasta Z, aunque Y no tenga adjudicaciones. Cada paso cita el aviso que lo respalda. Hay ${cs.length} cadena${cs.length === 1 ? '' : 's'} en los datos cargados.</p>` +
+    (cs.map((c, i) => `<article class="chain" style="animation-delay:${Math.min(i, 8) * 60}ms">
+      ${hop('X, adjudicataria', c.x, c.x_awards.slice(0, 2).map(a => `<div class="award-line"><b>${esc(a.organism)}</b> le adjudicó: ${esc(a.object)} (${fmtDate(a.act_date)}). <a href="${a.url}" target="_blank" rel="noopener">Ver aviso</a></div>`).join('') + via(c.p1, c.p1.in_x))}
+      ${hop(c.y_tech_awards ? 'Y' : 'Y, sin adjudicaciones', c.y, via(c.p1, c.p1.in_y) + via(c.p2, c.p2.in_y))}
+      ${hop('Z', c.z, via(c.p2, c.p2.in_z))}
+    </article>`).join('') || '<p class="empty">Todavía no hay cadenas completas. Corré <code>bora-dpi investigate</code> para recorrer más sociedades.</p>');
+}
+$('#chains').addEventListener('click', e => { const n = e.target.closest('[data-node]'); if (n) nav('#map/' + n.dataset.node); });
+
+// --- Revisión -----------------------------------------------------------
+let reviewTab = 'pending', stat = {};
+const QUESTION = {
+  name_match: d => `¿${esc(d.mention)} es la misma persona que ${esc(d.candidate)}?`,
+  dni_inconsistent: d => `El mismo DNI figura con otro nombre: ¿${esc(d.mention)} es ${esc(d.candidate || 'la misma persona')}?`,
+  company_name_match: d => `¿Este aviso es de ${esc(d.company)}?`,
+  cuit_missing: d => `Falta el CUIT de ${esc(d.awardee)}`,
+  award_evidence: d => `La cita no coincide con el aviso de ${esc(d.awardee)}`,
+};
+const ACTIONS = {
+  name_match: ['Es la misma persona', 'Son personas distintas'], dni_inconsistent: ['Es la misma persona', 'Son personas distintas'],
+  company_name_match: ['Es esta sociedad', 'Es otra sociedad'], cuit_missing: ['Guardar CUIT', 'Descartar adjudicación'],
+  award_evidence: ['La adjudicación es correcta', 'Descartar adjudicación'],
+};
+function caseBody(r) {
+  const d = r.detail;
+  if (r.ref_table === 'roles' && (r.kind === 'name_match' || r.kind === 'dni_inconsistent'))
+    return `<div class="compare"><div><h3>En este aviso, sin DNI suficiente</h3><p class="meta">${esc(d.role)} en ${esc(d.company)}</p>${cite(d, 'pending')}</div>
+      <div><h3>Persona identificada por DNI</h3>${(d.candidate_roles || []).slice(0, 2).map(c => `<p class="meta">${esc(c.role)} en ${esc(c.company)}</p>${cite(c)}`).join('')}
+      ${d.candidate_node && d.candidate_node !== 'pNone' ? `<p class="note"><button class="linkbtn" data-node="${d.candidate_node}">Ver en el mapa</button></p>` : ''}</div></div>`;
+  if (r.kind === 'company_name_match')
+    return `<p class="meta">El aviso coincide en la denominación pero no menciona el CUIT ${esc(d.company_cuit || '')}. Si es de otra sociedad homónima, sus personas no se vinculan.</p>${cite(d, 'pending')}`;
+  return `<p class="meta">${esc(d.organism)}: ${esc(d.object)}. CUIT leído en el aviso: ${esc(d.cuit_raw || 'no consta')}.</p>${cite(d, 'award')}`;
+}
+async function reviews(tab) {
+  reviewTab = tab;
+  const rs = await api('/api/reviews?status=' + tab);
+  let h = `<h1>Revisión</h1><p class="lede">Las coincidencias que no se pudieron resolver con el DNI del aviso, el Registro Nacional de Sociedades o el padrón de ARCA. Mientras están pendientes no unen sociedades en el mapa.</p>
+    <div class="tabs" role="tablist"><button role="tab" aria-selected="${tab === 'pending'}" data-tab="pending">Pendientes (${stat.reviews_pending ?? ''})</button>
+    <button role="tab" aria-selected="${tab === 'auto'}" data-tab="auto">Resueltas automáticamente (${stat.reviews_auto ?? ''})</button></div>`;
+  if (tab === 'auto') h += `<div class="auto-summary"><div><strong>${stat.reviews_auto ?? 0}</strong>casos resueltos sin intervención</div><div><strong>${stat.persons_registry ?? 0}</strong>personas identificadas con el padrón ARCA</div></div>`;
+  h += rs.map((r, i) => {
+    const [yes, no] = ACTIONS[r.kind] || ['Confirmar', 'Descartar'];
+    const done = r.status !== 'pending';
+    return `<article class="case" style="animation-delay:${Math.min(i, 8) * 50}ms"><div class="meta">${done ? (r.status === 'confirmed' ? '<span class="badge dni">confirmado</span>' : '<span class="badge pend">descartado</span>') : ''}</div>
+      <h2>${(QUESTION[r.kind] || (() => esc(r.summary)))(r.detail)}</h2>${caseBody(r)}
+      ${done ? `<p class="note">${esc(r.note || '')}</p>` : window.STATIC_SITE ? '<p class="note">Versión pública de solo lectura: las decisiones se toman en la instancia del equipo.</p>' : `<div class="actions">
+        ${r.kind === 'cuit_missing' ? `<input class="field" id="cuit${r.id}" inputmode="numeric" placeholder="CUIT de otra fuente oficial" aria-label="CUIT"><input class="field" id="note${r.id}" placeholder="Fuente" aria-label="Fuente">` : ''}
+        <button class="btn primary" data-decide="${r.id}" data-d="confirm">${yes}</button><button class="btn danger" data-decide="${r.id}" data-d="reject">${no}</button></div>`}
+    </article>`;
+  }).join('') || `<p class="empty">${tab === 'pending' ? 'No queda nada por revisar.' : 'Todavía no hay casos resueltos automáticamente. Corré bora-dpi autoresolve.'}</p>`;
+  $('#review').innerHTML = h;
+}
+$('#review').addEventListener('click', async e => {
+  const t = e.target.closest('[data-tab]'); if (t) { nav(t.dataset.tab === 'auto' ? '#review/auto' : '#review'); return; }
+  const n = e.target.closest('[data-node]'); if (n) { nav('#map/' + n.dataset.node); return; }
+  const b = e.target.closest('[data-decide]'); if (!b) return;
+  const id = b.dataset.decide, cuit = $('#cuit' + id)?.value, note = $('#note' + id)?.value;
+  const r = await fetch('/api/reviews/' + id, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decision: b.dataset.d, cuit, note }) });
+  if (!r.ok) { alert((await r.json()).detail || 'No se pudo guardar la decisión.'); return; }
+  const c = b.closest('.case'); c.classList.add('leaving'); c.addEventListener('animationend', () => c.remove(), { once: true });
+  if (calm) c.remove();
+  stats();
+});
+
+// --- Archivo ------------------------------------------------------------
+$('#nform').addEventListener('submit', async e => {
+  e.preventDefault();
+  const r = await api('/api/notices?q=' + encodeURIComponent($('#nq').value));
+  $('#nres').innerHTML = r.map(n => `<article class="notice"><div class="kind">${{ segunda: '2.ª sección', tercera: '3.ª sección' }[n.section] || n.section}, ${fmtDate(n.date)}${n.rubro ? ', ' + esc(n.rubro.toLowerCase()) : ''}</div>
+      <h3>${esc(n.title)}</h3><p class="objeto">${esc(n.snippet)}</p><a href="${n.url}" target="_blank" rel="noopener">Ver aviso original</a></article>`).join('')
+    || '<p class="empty">Sin resultados en el archivo. El archivo solo incluye avisos ya descargados.</p>';
+});
+
+async function stats() {
+  stat = await api('/api/stats');
+  const n = v => (v ?? 0).toLocaleString('es-AR');
+  $('#stats').innerHTML = `<div><strong>${n(stat.tech_awards)}</strong>adjudicaciones tecnológicas</div><div><strong>${n(stat.companies)}</strong>sociedades</div><div><strong>${n(stat.notices)}</strong>avisos</div>`;
+  $('#nrev').textContent = stat.reviews_pending; $('#nrev').hidden = !stat.reviews_pending;
+}
+stats().then(route);
+</script>
+</body>
+</html>

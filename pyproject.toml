@@ -1,0 +1,20 @@
+[project]
+name = "bora-dpi"
+version = "0.1.0"
+description = "Mapa de proveedores privados de infraestructura pública digital a partir del Boletín Oficial (BORA)"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    "httpx[socks]>=0.28",
+]
+
+[project.scripts]
+bora-dpi = "bora_dpi.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["uv_build>=0.12.9,<0.13.0"]
+build-backend = "uv_build"
